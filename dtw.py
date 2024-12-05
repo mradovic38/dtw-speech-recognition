@@ -184,7 +184,7 @@ def recognize_word(input_file, input_speaker_name, speaker_files, mfcc_threshold
         # Calculate and print the average DTW distances
         for feature_type in feature_types:
             avg_distance = np.mean(word_distances_by_feature[feature_type])
-            print(f"Average {feature_type.upper()} DTW distance for word '{top_word}': {avg_distance:.4f}")
+            # print(f"Average {feature_type.upper()} DTW distance for word '{top_word}': {avg_distance:.4f}")
             if feature_type=='mfcc' and avg_distance > 0.3:
                 final_top_word = None
         
@@ -192,22 +192,87 @@ def recognize_word(input_file, input_speaker_name, speaker_files, mfcc_threshold
 
 
 
-# Step 4: Find Similar Speaker
-def find_similar_speaker(input_file, input_speaker_name, speaker_files, feature_type="mfcc"):
-    input_features = extract_features(input_file, input_speaker_name, feature_type)
+def find_similar_speaker(input_speaker_name, speaker_files):
+    """
+    Find the most similar speaker by scaling feature distances to ensure equal importance.
 
-    closest_speaker = None
-    min_distance = float('inf')
+    Args:
+        input_speaker_name (str): Name of the input speaker.
+        speaker_files (dict): Dictionary of speakers with their words and corresponding file paths.
 
-    for speaker, files in speaker_files.items():
-        distances = []
-        for file_path in files:
-            speaker_features = extract_features(file_path, input_speaker_name, feature_type)
-            distances.append(dtw_distance(input_features, speaker_features))
-        avg_distance = np.mean(distances)
-        print(f"Average DTW distance for speaker '{speaker}' is {avg_distance:.2f}")
-        if avg_distance < min_distance:
-            min_distance = avg_distance
-            closest_speaker = speaker
+    Returns:
+        str: Name of the most similar speaker.
+    """
+    feature_types = ['mfcc', 'lpc', 'mel']
+    speaker_distances = {speaker: {feature: [] for feature in feature_types} for speaker in speaker_files}
 
-    return closest_speaker, min_distance
+    # Collect words from the input speaker
+    input_words_files = speaker_files.get(input_speaker_name, {})
+    if not input_words_files:
+        raise ValueError(f"Speaker '{input_speaker_name}' not found in speaker files.")
+
+    # Extract features for input speaker's words
+    input_features = {feature: {} for feature in feature_types}
+    for feature_type in feature_types:
+        for word, file_path in input_words_files.items():
+            input_features[feature_type][word] = extract_features(file_path, feature_type)
+
+    # Compare with other speakers' words
+    for speaker, words_files in speaker_files.items():
+        if input_speaker_name == speaker:
+            continue  # Skip comparing with the input speaker itself
+
+        # Calculate distances for each word and feature type
+        for word, file_path in words_files.items():
+            if word in input_words_files:  # Only compare corresponding words
+                for feature_type in feature_types:
+                    # Extract features for the reference word
+                    ref_features = extract_features(file_path, feature_type)
+                    input_feat = input_features[feature_type][word]
+
+                    # Calculate DTW distance for this feature type
+                    distance = dtw_distance(input_feat, ref_features)
+                    speaker_distances[speaker][feature_type].append(distance)
+
+    # Normalize distances for each feature type across all speakers
+    normalized_distances = {speaker: [] for speaker in speaker_files if speaker != input_speaker_name}
+    for feature_type in feature_types:
+        # Gather all distances for the current feature type
+        all_distances = [
+            dist for speaker in speaker_distances if speaker != input_speaker_name
+            for dist in speaker_distances[speaker][feature_type]
+        ]
+
+        # Normalize using z-score normalization
+        mean = np.mean(all_distances)
+        std = np.std(all_distances) if np.std(all_distances) > 0 else 1  # Prevent division by zero
+
+        for speaker in speaker_distances:
+            if speaker == input_speaker_name:
+                continue
+            # Normalize each speaker's distances for this feature type
+            normalized = [(dist - mean) / std for dist in speaker_distances[speaker][feature_type]]
+            normalized_distances[speaker].extend(normalized)
+
+    # Calculate average Euclidean distances for each speaker
+    speaker_avg_distances = {}
+    for speaker, distances in normalized_distances.items():
+        if distances:
+            # Compute the average Euclidean distance over all words
+            euclidean_distances = [
+                np.sqrt(sum(d**2 for d in distances[i:i + 3]))
+                for i in range(0, len(distances), 3)  # Group by 3 (one for each feature)
+            ]
+            speaker_avg_distances[speaker] = np.mean(euclidean_distances)
+
+    # Find the most similar speaker
+    most_similar_speaker = min(speaker_avg_distances, key=speaker_avg_distances.get)
+
+    # Print distances and the most similar speaker
+    print(f"\nDistance calculations between '{input_speaker_name}' and other speakers:")
+    for speaker, avg_distance in speaker_avg_distances.items():
+        print(f"  Speaker: {speaker}, Average Euclidean distance: {avg_distance:.4f}")
+
+    print(f"\nMost similar speaker: {most_similar_speaker} with average distance {speaker_avg_distances[most_similar_speaker]:.4f}")
+    
+    return most_similar_speaker
