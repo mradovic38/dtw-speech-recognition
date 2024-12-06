@@ -184,11 +184,11 @@ def recognize_word(input_file, input_speaker_name, speaker_files, mfcc_threshold
         # Calculate and print the average DTW distances
         for feature_type in feature_types:
             avg_distance = np.mean(word_distances_by_feature[feature_type])
-            print(f"Average {feature_type.upper()} DTW distance for word '{top_word}': {avg_distance:.4f}")
-            if feature_type=='mfcc' and avg_distance > 0.3:
+            # print(f"Average {feature_type.upper()} DTW distance for word '{top_word}': {avg_distance:.4f}")
+            if feature_type=='mfcc' and avg_distance > mfcc_threshold:
                 final_top_word = None
         
-    return final_top_word
+    return final_top_word, top_word
 
 
 
