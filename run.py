@@ -24,6 +24,6 @@ if __name__ == '__main__':
     recognized_word, top_word = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word)
 
-    print('\n Similar speaker to speaker named 38-21:')
+    print('\nSimilar speaker to speaker named 38-21:')
 
-    find_similar_speaker(REF_NAME, DB_PATH)
+    print(find_similar_speaker(REF_NAME, DB_PATH))

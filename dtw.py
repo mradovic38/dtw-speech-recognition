@@ -61,12 +61,13 @@ def extract_features(file_path, feature_type="mel"):
     Returns:
         numpy.ndarray: Extracted features
     """
-    y, sr = librosa.load(file_path, sr=44000)
+    y, sr = librosa.load(file_path, sr=48000)
     y[y == 0] = 1e-10
+    y = librosa.util.normalize(y)
 
     if feature_type == "mfcc":
         # Improved MFCC extraction
-        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=5, n_fft=2048, hop_length=512)
+        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=2048, hop_length=512)
         features = mfccs.T
     
     elif feature_type == "mel":
@@ -74,7 +75,7 @@ def extract_features(file_path, feature_type="mel"):
         n_fft = 2048
         hop_length = 512
         mel_spec = librosa.feature.melspectrogram(
-            y=y, sr=sr, n_mels=40, 
+            y=y, sr=sr, n_mels=64, 
             n_fft=n_fft, hop_length=hop_length
         )
         # Log-mel with normalization
@@ -132,14 +133,14 @@ def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidenc
 
     # Calculate DTW costs for each feature type
     for feature_type in feature_types:
-        print(f"Extracting {feature_type.upper()} features...")
+        #print(f"Extracting {feature_type.upper()} features...")
         input_features = extract_features(input_file, feature_type)
 
         for speaker in speaker_files:
             if input_speaker_name == speaker:
                 continue
             
-            print(f'\tSpeaker: {speaker}')
+            #print(f'\tSpeaker: {speaker}')
             for word in speaker_files[speaker]:
                 if word not in vocab:
                     continue
@@ -148,7 +149,7 @@ def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidenc
                 ref_features = extract_features(file_path, feature_type)
                 cost = dtw_cost(input_features, ref_features)
                 word_costs[feature_type][word].append(cost)
-                print(f'\t\tWord: {word}, cost: {cost}')
+                #print(f'\t\tWord: {word}, cost: {cost}')
 
     # Calculate mean costs per word for each feature type
     mean_costs = {feature: {} for feature in feature_types}
@@ -163,7 +164,7 @@ def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidenc
     for feature_type in feature_types:
         best_word = min(mean_costs[feature_type], key=mean_costs[feature_type].get)
         best_cost = mean_costs[feature_type][best_word]
-        print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
+        #print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
         predictions[feature_type] = best_word
         feature_votes.append(feature_type)
 
@@ -174,16 +175,16 @@ def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidenc
             word_scores[predicted_word] += weights[feature_type]
 
     # Final word selection based on scores
-    print(f"Word scores: {word_scores}")
+    #print(f"Word scores: {word_scores}")
     final_word = max(word_scores, key=word_scores.get) 
     total_score = sum(word_scores.values())
     confidence = word_scores[final_word] / total_score if total_score > 0 else 0
 
-    print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
+    #print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
 
     # Confidence thresholding
     if confidence < confidence_threshold:
-        print("Confidence below threshold. Classifying as unknown.")
+        #print("Confidence below threshold. Classifying as unknown.")
         return None, final_word
 
     # Check if Mel cost exceeds the threshold
@@ -191,29 +192,60 @@ def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidenc
     if mel_best_word:
         mel_best_cost = mean_costs['mel'][mel_best_word]
         if mel_best_cost > mel_cost_threshold:
-            print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
+            #print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
             return None, final_word
             
 
     return final_word, final_word
 
 
-# Step 4: Find Similar Speaker
-def find_similar_speaker(input_file, input_speaker_name, speaker_files, feature_type="mfcc"):
-    input_features = extract_features(input_file, input_speaker_name, feature_type)
+def find_similar_speaker(target_speaker, sound_database, feature_type='mel'):
+    """
+    Find the most similar speaker to the target speaker based on DTW distance.
+    
+    Args:
+        target_speaker (str): The name of the target speaker.
+        sound_database (str): Path to the directory containing the speaker's audio files.
+        feature_type (str): Feature type to be used for DTW ('mfcc', 'mel', or 'lpc').
+        threshold (float): Threshold for similarity. If all speakers are too dissimilar, return None.
 
-    closest_speaker = None
-    min_distance = float('inf')
+    Returns:
+        str: The name of the most similar speaker.
+    """
+    # Load speaker files from the sound database
+    speaker_files = load_speakers_from_folder(sound_database)
+    
+    # Extract features for the target speaker's words
+    target_features = {word: extract_features(file_path, feature_type) for word, file_path in speaker_files[target_speaker].items()}
 
-    for speaker, files in speaker_files.items():
-        distances = []
-        for file_path in files:
-            speaker_features = extract_features(file_path, input_speaker_name, feature_type)
-            distances.append(dtw_distance(input_features, speaker_features))
-        avg_distance = np.mean(distances)
-        print(f"Average DTW distance for speaker '{speaker}' is {avg_distance:.2f}")
-        if avg_distance < min_distance:
-            min_distance = avg_distance
-            closest_speaker = speaker
+    # Initialize a dictionary to store DTW costs for each speaker
+    speaker_dtw_distances = {}
+    vocab = np.unique([x.split('-')[0] for x in os.listdir(sound_database)])
 
-    return closest_speaker, min_distance
+    # Loop through all speakers in the dataset
+    for speaker, words in speaker_files.items():
+        if speaker == target_speaker:
+            continue
+        
+        # Initialize a list to accumulate the DTW distances for each word
+        total_cost = 0
+        
+        for word, file_path in words.items():
+            if word in target_features:
+                # Extract features for the reference word
+                ref_features = extract_features(file_path, feature_type)
+                
+                # Calculate the DTW cost between the target word and the reference word
+                cost = dtw_cost(target_features[word], ref_features)
+                
+                total_cost += cost
+        
+        # Compute the average DTW cost for this speaker
+        average_cost = total_cost / len(vocab)
+        speaker_dtw_distances[speaker] = average_cost
+
+    # Find the speaker with the minimum DTW distance
+    most_similar_speaker = min(speaker_dtw_distances, key=speaker_dtw_distances.get)
+    most_similar_distance = speaker_dtw_distances[most_similar_speaker]
+    
+    return most_similar_speaker #, most_similar_distance
