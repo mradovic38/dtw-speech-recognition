@@ -1,30 +1,29 @@
 from dtw import recognize_word, find_similar_speaker
-from utils import load_speakers_from_folder, print_results
-
+from utils import print_results
 
 
 if __name__ == '__main__':
 
     DB_PATH = "sound_database"
-    speakers = load_speakers_from_folder(DB_PATH)
+    REF_NAME = '38-21'
     
 
     print("Results on a word from a speaker who's sounds are in the dataset, but the said word is not in the dataset vocabulary:")
-    REF_NAME = ""
     INPUT_FILE = "test.wav"
-    recognized_word, top_word = recognize_word(INPUT_FILE, REF_NAME, speakers)
+    recognized_word, top_word = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word)
 
-
     print("\nResults on a word from a speaker who's sounds are not in the dataset, but the said word is in the dataset vocabulary:")
-    REF_NAME = ""
     INPUT_FILE = 'desno-test.wav'
-    recognized_word, top_word = recognize_word(INPUT_FILE, REF_NAME, speakers)
+    recognized_word, top_word = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word)
 
 
     print("\nResults on a word from a speaker who's sounds are in the dataset and the said word is in the dataset vocabulary:")
-    REF_NAME = ""
     INPUT_FILE = 'levo-test.wav'
-    recognized_word, top_word = recognize_word(INPUT_FILE, REF_NAME, speakers)
+    recognized_word, top_word = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word)
+
+    print('\n Similar speaker to speaker named 38-21:')
+
+    find_similar_speaker(REF_NAME, DB_PATH)

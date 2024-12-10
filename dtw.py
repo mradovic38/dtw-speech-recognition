@@ -1,7 +1,9 @@
 import numpy as np
+import os
 import librosa
 import scipy.spatial.distance as dist
-from scipy.stats import zscore
+
+from utils import load_speakers_from_folder
 
 def dp(dist_mat):
     """
@@ -33,10 +35,13 @@ def dp(dist_mat):
     path = [(i, j)]
     while i > 0 or j > 0:
         tb_type = traceback_mat[i, j]
+        # Match
         if tb_type == 0:
             i, j = i - 1, j - 1
+        # Insertion
         elif tb_type == 1:
             i = i - 1
+        # Deletion
         elif tb_type == 2:
             j = j - 1
         path.append((i, j))
@@ -56,13 +61,12 @@ def extract_features(file_path, feature_type="mel"):
     Returns:
         numpy.ndarray: Extracted features
     """
-    y, sr = librosa.load(file_path, sr=None)
-    
+    y, sr = librosa.load(file_path, sr=44000)
+    y[y == 0] = 1e-10
+
     if feature_type == "mfcc":
         # Improved MFCC extraction
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=5, n_fft=2048, hop_length=512)
-        # Normalize and transpose
-        mfccs = (mfccs - mfccs.mean(axis=1, keepdims=True)) / (mfccs.std(axis=1, keepdims=True) + 1e-10)
         features = mfccs.T
     
     elif feature_type == "mel":
@@ -70,17 +74,20 @@ def extract_features(file_path, feature_type="mel"):
         n_fft = 2048
         hop_length = 512
         mel_spec = librosa.feature.melspectrogram(
-            y=y, sr=sr, n_mels=64, 
+            y=y, sr=sr, n_mels=40, 
             n_fft=n_fft, hop_length=hop_length
         )
         # Log-mel with normalization
-        features = librosa.power_to_db(mel_spec, ref=np.max)
-        features = (features - features.mean()) / features.std()
-        features = features.T
+        log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
+    
+        # Normalize the Mel spectrogram
+        log_mel_spec = (log_mel_spec - np.mean(log_mel_spec)) / np.std(log_mel_spec)
+
+        features = log_mel_spec.T
     
     elif feature_type == "lpc":
         # Robust LPC feature extraction
-        lpc_order = 2
+        lpc_order = 10
         frame_length = 2048
         hop_length = 512
         
@@ -98,7 +105,7 @@ def extract_features(file_path, feature_type="mel"):
     
     return features
 
-def dtw_distance(seq1, seq2):
+def dtw_cost(seq1, seq2):
     """Calculate DTW distance using cosine distance and dynamic programming"""
     dist_mat = dist.cdist(seq1, seq2, "cosine")
     _, cost_mat = dp(dist_mat)
@@ -107,89 +114,88 @@ def dtw_distance(seq1, seq2):
     normalized_cost = cost_mat[-1, -1] / (seq1.shape[0] + seq2.shape[0])
     return normalized_cost
 
-def recognize_word(input_file, input_speaker_name, speaker_files, mfcc_threshold = 0.3):
+def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidence_threshold=0.8, input_speaker_name=''):
     """
-    Recognize word with improved scoring mechanism and pre-filtering
+    Recognize word with improved scoring mechanism:
+    - Calculate mean DTW cost for each word across all speakers for each feature type.
+    - Predict the best word for each feature type.
+    - Use weighted voting based on these predictions to determine the final word.
+    - Check if MFCC's best mean value exceeds a threshold.
     """
     feature_types = ['mfcc', 'lpc', 'mel']
-    feature_results = {}
-    
-    # Collect unique words in the dataset
-    dataset_words = set()
-    for words_files in speaker_files.values():
-        dataset_words.update(words_files.keys())
-    
-    # To store distances for calculating averages later
-    word_distances_by_feature = {feature: [] for feature in feature_types}
-    word_distances_by_speaker = {feature: [] for feature in feature_types}
-    
+    weights = {'mfcc': 2, 'mel': 2, 'lpc': 1}
+
+    # Load speaker files and initialize variables
+    speaker_files = load_speakers_from_folder(sound_database)
+    vocab = np.unique([x.split('-')[0] for x in os.listdir(sound_database)])
+    word_costs = {feature: {word: [] for word in vocab} for feature in feature_types}
+
+    # Calculate DTW costs for each feature type
     for feature_type in feature_types:
+        print(f"Extracting {feature_type.upper()} features...")
         input_features = extract_features(input_file, feature_type)
-        feature_matches = {}
-        
-        for speaker, words_files in speaker_files.items():
+
+        for speaker in speaker_files:
             if input_speaker_name == speaker:
                 continue
             
-            speaker_word_distances = []
-            
-            for word, file_path in words_files.items():
+            print(f'\tSpeaker: {speaker}')
+            for word in speaker_files[speaker]:
+                if word not in vocab:
+                    continue
+                
+                file_path = speaker_files[speaker][word]
                 ref_features = extract_features(file_path, feature_type)
-                distance = dtw_distance(input_features, ref_features)
+                cost = dtw_cost(input_features, ref_features)
+                word_costs[feature_type][word].append(cost)
+                print(f'\t\tWord: {word}, cost: {cost}')
 
-                speaker_word_distances.append((word, distance))
-                
-                # Collect distances for the predicted word later
-                if word in dataset_words:
-                    word_distances_by_feature[feature_type].append(distance)
-                    word_distances_by_speaker[feature_type].append(distance)
+    # Calculate mean costs per word for each feature type
+    mean_costs = {feature: {} for feature in feature_types}
+    for feature_type in feature_types:
+        for word in vocab:
+            costs = word_costs[feature_type][word]
+            mean_costs[feature_type][word] = np.mean(costs) if costs else np.inf
+
+    # Generate predictions for each feature type
+    predictions = {}
+    feature_votes = []
+    for feature_type in feature_types:
+        best_word = min(mean_costs[feature_type], key=mean_costs[feature_type].get)
+        best_cost = mean_costs[feature_type][best_word]
+        print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
+        predictions[feature_type] = best_word
+        feature_votes.append(feature_type)
+
+    # Weighted voting
+    word_scores = {word: 0 for word in vocab}
+    for feature_type, predicted_word in predictions.items():
+        if predicted_word:
+            word_scores[predicted_word] += weights[feature_type]
+
+    # Final word selection based on scores
+    print(f"Word scores: {word_scores}")
+    final_word = max(word_scores, key=word_scores.get) 
+    total_score = sum(word_scores.values())
+    confidence = word_scores[final_word] / total_score if total_score > 0 else 0
+
+    print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
+
+    # Confidence thresholding
+    if confidence < confidence_threshold:
+        print("Confidence below threshold. Classifying as unknown.")
+        return None, final_word
+
+    # Check if Mel cost exceeds the threshold
+    mel_best_word = predictions['mel']
+    if mel_best_word:
+        mel_best_cost = mean_costs['mel'][mel_best_word]
+        if mel_best_cost > mel_cost_threshold:
+            print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
+            return None, final_word
             
-            # Normalize distances for pre-filtered matches
-            if speaker_word_distances:
-                distances = [d[1] for d in speaker_word_distances]
-                normalized_distances = 1 - (distances - min(distances)) / (max(distances) - min(distances))
-                
-                feature_matches[speaker] = [
-                    (speaker_word_distances[i][0], normalized_distances[i]) 
-                    for i in range(len(speaker_word_distances))
-                ]
-        
-        feature_results[feature_type] = feature_matches
-    
-    # Aggregate results with voting
-    word_scores = {}
-    for feature_type, matches in feature_results.items():
-        for speaker, word_list in matches.items():
-            for word, score in word_list:
-                if word not in word_scores:
-                    word_scores[word] = []
-                word_scores[word].append(score)
-    
-    # Compute final word ranking
-    ranked_words = [
-        (word, np.mean(scores)) 
-        for word, scores in word_scores.items() 
-        if word in dataset_words and len(scores) > 0
-    ]
-    
-    ranked_words.sort(key=lambda x: x[1], reverse=True)
-    
-    # Get the top-ranked word
-    top_word = ranked_words[0][0] if ranked_words else None
-    final_top_word = top_word
-    
-    if top_word:
-        print(f"Top predicted word: {top_word}")
-        
-        # Calculate and print the average DTW distances
-        for feature_type in feature_types:
-            avg_distance = np.mean(word_distances_by_feature[feature_type])
-            # print(f"Average {feature_type.upper()} DTW distance for word '{top_word}': {avg_distance:.4f}")
-            if feature_type=='mfcc' and avg_distance > mfcc_threshold:
-                final_top_word = None
-        
-    return final_top_word, top_word
 
+    return final_word, final_word
 
 
 # Step 4: Find Similar Speaker
