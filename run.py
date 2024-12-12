@@ -28,3 +28,11 @@ if __name__ == '__main__':
     print('\nSimilar speaker to speaker named 38-21 based on MFCC:')
 
     print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mfcc'))
+
+    print('\nSimilar speaker to speaker named 38-21 based on Mel Spec:')
+
+    print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mel'))
+
+    print('\nSimilar speaker to speaker named 38-21 based on LPC:')
+
+    print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='lpc'))
