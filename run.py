@@ -1,4 +1,5 @@
-from dtw import recognize_word, find_similar_speaker
+from word_recognition import recognize_word
+from similar_speaker import find_similar_speaker
 from utils import print_results
 
 
@@ -24,6 +25,6 @@ if __name__ == '__main__':
     recognized_word, top_word = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word)
 
-    print('\nSimilar speaker to speaker named 38-21:')
+    print('\nSimilar speaker to speaker named 38-21 based on MFCC:')
 
-    print(find_similar_speaker(REF_NAME, DB_PATH))
+    print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mfcc'))

@@ -1,15 +1,25 @@
 import numpy as np
-import os
-import librosa
 import scipy.spatial.distance as dist
+from typing import Tuple, List
 
-from utils import load_speakers_from_folder
+def dp(dist_mat: np.ndarray) -> Tuple[List[Tuple[int, int]], np.ndarray]:
+    """
+    Find the minimum-cost path through a distance matrix using dynamic programming.
+    
+    This function computes the optimal alignment path between two sequences by finding
+    the path that minimizes the cumulative distance.
+    
+    Args:
+        dist_mat (numpy.ndarray): A 2D array representing pairwise distances between 
+                                  elements of two sequences.
 
-def dp(dist_mat):
+    Returns:
+        tuple: 
+            - path (list of tuples): The optimal alignment path represented as a list of 
+              index pairs (i, j).
+            - cost_mat (numpy.ndarray): The cumulative cost matrix after alignment.
     """
-    Find minimum-cost path through matrix using dynamic programming.
-    Returns path indices and cost matrix.
-    """
+
     N, M = dist_mat.shape
     
     # Initialize cost matrix with infinity
@@ -48,204 +58,30 @@ def dp(dist_mat):
     
     # Strip infinity edges from cost matrix
     cost_mat = cost_mat[1:, 1:]
+
     return (path[::-1], cost_mat)
 
-def extract_features(file_path, feature_type="mel"):
+
+
+def calculate_dtw_cost(seq1: np.ndarray, seq2: np.ndarray) -> float:
     """
-    Extract audio features from a file.
+    Calculate the normalized Dynamic Time Warping (DTW) cost between two sequences.
     
+    DTW aligns two sequences by computing the optimal alignment path that minimizes 
+    the distance between them. This implementation uses cosine distance as the 
+    distance metric and dynamic programming for alignment.
+
     Args:
-        file_path (str): Path to the audio file
-        feature_type (str): Type of feature extraction ('mfcc', 'mel', or 'lpc')
-    
+        seq1 (numpy.ndarray): Feature matrix of the first sequence
+        seq2 (numpy.ndarray): Feature matrix of the second sequence
+
     Returns:
-        numpy.ndarray: Extracted features
+        float: The normalized DTW cost
     """
-    y, sr = librosa.load(file_path, sr=48000)
-    y[y == 0] = 1e-10
-    y = librosa.util.normalize(y)
 
-    if feature_type == "mfcc":
-        # Improved MFCC extraction
-        mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=2048, hop_length=512)
-        features = mfccs.T
-    
-    elif feature_type == "mel":
-        # Enhanced Mel spectrogram extraction
-        n_fft = 2048
-        hop_length = 512
-        mel_spec = librosa.feature.melspectrogram(
-            y=y, sr=sr, n_mels=64, 
-            n_fft=n_fft, hop_length=hop_length
-        )
-        # Log-mel with normalization
-        log_mel_spec = librosa.power_to_db(mel_spec, ref=np.max)
-    
-        # Normalize the Mel spectrogram
-        log_mel_spec = (log_mel_spec - np.mean(log_mel_spec)) / np.std(log_mel_spec)
-
-        features = log_mel_spec.T
-    
-    elif feature_type == "lpc":
-        # Robust LPC feature extraction
-        lpc_order = 10
-        frame_length = 2048
-        hop_length = 512
-        
-        frames = librosa.util.frame(y, frame_length=frame_length, hop_length=hop_length)
-        
-        lpc_features = []
-        for frame in frames.T:
-            lpc_coeffs = librosa.lpc(frame, order=lpc_order)
-            lpc_features.append(lpc_coeffs[1:])
-        
-        features = np.array(lpc_features)
-    
-    else:
-        raise ValueError(f"Unsupported feature type: {feature_type}")
-    
-    return features
-
-def dtw_cost(seq1, seq2):
-    """Calculate DTW distance using cosine distance and dynamic programming"""
     dist_mat = dist.cdist(seq1, seq2, "cosine")
     _, cost_mat = dp(dist_mat)
     
     # Normalize alignment cost
     normalized_cost = cost_mat[-1, -1] / (seq1.shape[0] + seq2.shape[0])
     return normalized_cost
-
-def recognize_word(input_file, sound_database, mel_cost_threshold=0.2, confidence_threshold=0.8, input_speaker_name=''):
-    """
-    Recognize word with improved scoring mechanism:
-    - Calculate mean DTW cost for each word across all speakers for each feature type.
-    - Predict the best word for each feature type.
-    - Use weighted voting based on these predictions to determine the final word.
-    - Check if MFCC's best mean value exceeds a threshold.
-    """
-    feature_types = ['mfcc', 'lpc', 'mel']
-    weights = {'mfcc': 2, 'mel': 2, 'lpc': 1}
-
-    # Load speaker files and initialize variables
-    speaker_files = load_speakers_from_folder(sound_database)
-    vocab = np.unique([x.split('-')[0] for x in os.listdir(sound_database)])
-    word_costs = {feature: {word: [] for word in vocab} for feature in feature_types}
-
-    # Calculate DTW costs for each feature type
-    for feature_type in feature_types:
-        #print(f"Extracting {feature_type.upper()} features...")
-        input_features = extract_features(input_file, feature_type)
-
-        for speaker in speaker_files:
-            if input_speaker_name == speaker:
-                continue
-            
-            #print(f'\tSpeaker: {speaker}')
-            for word in speaker_files[speaker]:
-                if word not in vocab:
-                    continue
-                
-                file_path = speaker_files[speaker][word]
-                ref_features = extract_features(file_path, feature_type)
-                cost = dtw_cost(input_features, ref_features)
-                word_costs[feature_type][word].append(cost)
-                #print(f'\t\tWord: {word}, cost: {cost}')
-
-    # Calculate mean costs per word for each feature type
-    mean_costs = {feature: {} for feature in feature_types}
-    for feature_type in feature_types:
-        for word in vocab:
-            costs = word_costs[feature_type][word]
-            mean_costs[feature_type][word] = np.mean(costs) if costs else np.inf
-
-    # Generate predictions for each feature type
-    predictions = {}
-    feature_votes = []
-    for feature_type in feature_types:
-        best_word = min(mean_costs[feature_type], key=mean_costs[feature_type].get)
-        best_cost = mean_costs[feature_type][best_word]
-        #print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
-        predictions[feature_type] = best_word
-        feature_votes.append(feature_type)
-
-    # Weighted voting
-    word_scores = {word: 0 for word in vocab}
-    for feature_type, predicted_word in predictions.items():
-        if predicted_word:
-            word_scores[predicted_word] += weights[feature_type]
-
-    # Final word selection based on scores
-    #print(f"Word scores: {word_scores}")
-    final_word = max(word_scores, key=word_scores.get) 
-    total_score = sum(word_scores.values())
-    confidence = word_scores[final_word] / total_score if total_score > 0 else 0
-
-    #print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
-
-    # Confidence thresholding
-    if confidence < confidence_threshold:
-        #print("Confidence below threshold. Classifying as unknown.")
-        return None, final_word
-
-    # Check if Mel cost exceeds the threshold
-    mel_best_word = predictions['mel']
-    if mel_best_word:
-        mel_best_cost = mean_costs['mel'][mel_best_word]
-        if mel_best_cost > mel_cost_threshold:
-            #print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
-            return None, final_word
-            
-
-    return final_word, final_word
-
-
-def find_similar_speaker(target_speaker, sound_database, feature_type='mel'):
-    """
-    Find the most similar speaker to the target speaker based on DTW distance.
-    
-    Args:
-        target_speaker (str): The name of the target speaker.
-        sound_database (str): Path to the directory containing the speaker's audio files.
-        feature_type (str): Feature type to be used for DTW ('mfcc', 'mel', or 'lpc').
-        threshold (float): Threshold for similarity. If all speakers are too dissimilar, return None.
-
-    Returns:
-        str: The name of the most similar speaker.
-    """
-    # Load speaker files from the sound database
-    speaker_files = load_speakers_from_folder(sound_database)
-    
-    # Extract features for the target speaker's words
-    target_features = {word: extract_features(file_path, feature_type) for word, file_path in speaker_files[target_speaker].items()}
-
-    # Initialize a dictionary to store DTW costs for each speaker
-    speaker_dtw_distances = {}
-    vocab = np.unique([x.split('-')[0] for x in os.listdir(sound_database)])
-
-    # Loop through all speakers in the dataset
-    for speaker, words in speaker_files.items():
-        if speaker == target_speaker:
-            continue
-        
-        # Initialize a list to accumulate the DTW distances for each word
-        total_cost = 0
-        
-        for word, file_path in words.items():
-            if word in target_features:
-                # Extract features for the reference word
-                ref_features = extract_features(file_path, feature_type)
-                
-                # Calculate the DTW cost between the target word and the reference word
-                cost = dtw_cost(target_features[word], ref_features)
-                
-                total_cost += cost
-        
-        # Compute the average DTW cost for this speaker
-        average_cost = total_cost / len(vocab)
-        speaker_dtw_distances[speaker] = average_cost
-
-    # Find the speaker with the minimum DTW distance
-    most_similar_speaker = min(speaker_dtw_distances, key=speaker_dtw_distances.get)
-    most_similar_distance = speaker_dtw_distances[most_similar_speaker]
-    
-    return most_similar_speaker #, most_similar_distance

@@ -33,7 +33,14 @@ def load_speakers_from_folder(folder_path: str) -> Dict[str, Dict[str, str]]:
     return speakers
 
 
-def print_results(recognized_word, top_pred):
+def print_results(recognized_word: str, top_pred: str) -> None:
+    '''
+    Prints results in a prettier way.
+
+    Args:
+        recognized word (str): Word that was detected.
+        top_pred (str): Top prediction word.
+    '''
     if recognized_word:
         print(f"Word detected: {recognized_word}")
 
