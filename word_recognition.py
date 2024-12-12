@@ -43,14 +43,14 @@ def recognize_word(input_file: str, sound_database: str, mel_cost_threshold: flo
 
     # Calculate DTW costs for each feature type
     for feature_type in feature_types:
-        #print(f"Extracting {feature_type.upper()} features...")
+        print(f"Extracting {feature_type.upper()} features...")
         input_features = extract_features(input_file, feature_type)
 
         for speaker in speaker_files:
             if input_speaker_name == speaker:
                 continue
             
-            #print(f'\tSpeaker: {speaker}')
+            print(f'\tSpeaker: {speaker}')
             for word in speaker_files[speaker]:
                 if word not in vocab:
                     continue
@@ -59,7 +59,7 @@ def recognize_word(input_file: str, sound_database: str, mel_cost_threshold: flo
                 ref_features = extract_features(file_path, feature_type)
                 cost = calculate_dtw_cost(input_features, ref_features)
                 word_costs[feature_type][word].append(cost)
-                #print(f'\t\tWord: {word}, cost: {cost}')
+                print(f'\t\tWord: {word}, cost: {cost}')
 
     # Calculate mean costs per word for each feature type
     mean_costs = {feature: {} for feature in feature_types}
@@ -74,7 +74,7 @@ def recognize_word(input_file: str, sound_database: str, mel_cost_threshold: flo
     for feature_type in feature_types:
         best_word = min(mean_costs[feature_type], key=mean_costs[feature_type].get)
         best_cost = mean_costs[feature_type][best_word]
-        #print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
+        print(f"{feature_type.upper()} prediction: {best_word} with mean cost {best_cost}")
         predictions[feature_type] = best_word
         feature_votes.append(feature_type)
 
@@ -85,16 +85,16 @@ def recognize_word(input_file: str, sound_database: str, mel_cost_threshold: flo
             word_scores[predicted_word] += weights[feature_type]
 
     # Final word selection based on scores
-    #print(f"Word scores: {word_scores}")
+    print(f"Word scores: {word_scores}")
     final_word = max(word_scores, key=word_scores.get) 
     total_score = sum(word_scores.values())
     confidence = word_scores[final_word] / total_score if total_score > 0 else 0
 
-    #print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
+    print(f"Final word: {final_word}, Confidence: {confidence:.2f}")
 
     # Confidence thresholding
     if confidence < confidence_threshold:
-        #print("Confidence below threshold. Classifying as unknown.")
+        print("Confidence below threshold. Classifying as unknown.")
         return None, final_word
 
     # Check if Mel cost exceeds the threshold
@@ -102,7 +102,7 @@ def recognize_word(input_file: str, sound_database: str, mel_cost_threshold: flo
     if mel_best_word:
         mel_best_cost = mean_costs['mel'][mel_best_word]
         if mel_best_cost > mel_cost_threshold:
-            #print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
+            print("Mel Spec. best cost exceeds threshold. Classifying as unknown.")
             return None, final_word
             
 

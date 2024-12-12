@@ -13,7 +13,7 @@ def extract_features(file_path, feature_type="mel"):
     Returns:
         numpy.ndarray: Extracted features
     """
-    y, sr = librosa.load(file_path, sr=48000)
+    y, sr = librosa.load(file_path, sr=22000)
     y[y == 0] = 1e-10
     y = librosa.util.normalize(y)
 
@@ -27,7 +27,7 @@ def extract_features(file_path, feature_type="mel"):
         n_fft = 2048
         hop_length = 512
         mel_spec = librosa.feature.melspectrogram(
-            y=y, sr=sr, n_mels=64, 
+            y=y, sr=sr, n_mels=30, 
             n_fft=n_fft, hop_length=hop_length
         )
         # Log-mel with normalization
