@@ -23,10 +23,10 @@ A speech recognition system that uses feature extraction and dynamic time warpin
 ## Usage
 1. Create a directory of audio files of different speakers saying the same group of words.
 2. Name your audio files as `word-speaker.wav` (ex. `down-mark.wav`).
-4. For details on how to run the project on your data, refer to the [run.py](run.py) file. It contains examples and explanations for word recognition and speaker similarity detection.
+4. For details on how to run the project on your data, refer to the [`run.py`](run.py) file. It contains examples and explanations for word recognition and speaker similarity detection.
 
 ## Customization
-* Adjust feature weights in [word_recognition.py](word_recognition.py) to prioritize specific features.
+* Adjust feature weights in [`word_recognition.py`](word_recognition.py) to prioritize specific features.
 * Modify confidence and cost thresholds to suit different datasets.
 
 ## How it works
