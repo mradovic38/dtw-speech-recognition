@@ -1,5 +1,5 @@
 import os
-from typing import Dict
+from typing import Dict, List, Tuple
 
 
 def load_speakers_from_folder(folder_path: str) -> Dict[str, Dict[str, str]]:
@@ -33,7 +33,7 @@ def load_speakers_from_folder(folder_path: str) -> Dict[str, Dict[str, str]]:
     return speakers
 
 
-def print_results(recognized_word: str, top_pred: str) -> None:
+def print_results(recognized_word: str, top_pred: str, sorted_dtw_results: Dict[str, List[Tuple[str, float]]]) -> None:
     '''
     Prints results in a prettier way.
 
@@ -41,8 +41,18 @@ def print_results(recognized_word: str, top_pred: str) -> None:
         recognized word (str): Word that was detected.
         top_pred (str): Top prediction word.
     '''
+    print("Sorted DTW Results:")
+    for ft, res_list in sorted_dtw_results.items():
+        print(f"\t{ft.upper()}:")
+        for word, cost in res_list:
+            print(f"\t\tWord: {word}, Cost: {cost:.4f}")
+            
     if recognized_word:
         print(f"Word detected: {recognized_word}")
 
     else:
         print(f"Word not detected! Top prediction: {top_pred}")
+
+    
+
+

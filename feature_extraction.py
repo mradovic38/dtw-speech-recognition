@@ -18,12 +18,13 @@ def extract_features(file_path, feature_type="mel"):
     y = librosa.util.normalize(y)
 
     if feature_type == "mfcc":
-        # Improved MFCC extraction
+        # MFCC extraction with normalization
         mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13, n_fft=2048, hop_length=512)
+        mfccs = (mfccs - np.mean(mfccs)) / np.std(mfccs)
         features = mfccs.T
     
     elif feature_type == "mel":
-        # Enhanced Mel spectrogram extraction
+        # Mel spectrogram extraction with normalization
         n_fft = 2048
         hop_length = 512
         mel_spec = librosa.feature.melspectrogram(
@@ -39,7 +40,7 @@ def extract_features(file_path, feature_type="mel"):
         features = log_mel_spec.T
     
     elif feature_type == "lpc":
-        # Robust LPC feature extraction
+        # LPC feature extraction with normalization
         lpc_order = 10
         frame_length = 2048
         hop_length = 512
@@ -50,6 +51,8 @@ def extract_features(file_path, feature_type="mel"):
         for frame in frames.T:
             lpc_coeffs = librosa.lpc(frame, order=lpc_order)
             lpc_features.append(lpc_coeffs[1:])
+
+        lpc_features = (lpc_features - np.mean(lpc_features)) / np.std(lpc_features)
         
         features = np.array(lpc_features)
     
