@@ -60,4 +60,4 @@ def find_similar_speaker(target_speaker: str, sound_database: str, feature_type:
     most_similar_speaker = min(speaker_dtw_distances, key=speaker_dtw_distances.get)
     most_similar_distance = speaker_dtw_distances[most_similar_speaker]
     
-    return most_similar_speaker #, most_similar_distance
+    return most_similar_speaker , most_similar_distance

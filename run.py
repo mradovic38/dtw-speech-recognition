@@ -25,14 +25,14 @@ if __name__ == '__main__':
     recognized_word, top_word, dtw_res = recognize_word(INPUT_FILE, DB_PATH)
     print_results(recognized_word, top_word, dtw_res)
 
-    # print('\nSimilar speaker to speaker named 38-21 based on MFCC:')
+    print('\nSimilar speaker to speaker named 38-21 based on MFCC:')
 
-    # print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mfcc'))
+    print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mfcc'))
 
     print('\nSimilar speaker to speaker named 38-21 based on Mel Spec:')
 
     print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='mel'))
 
-    # print('\nSimilar speaker to speaker named 38-21 based on LPC:')
+    print('\nSimilar speaker to speaker named 38-21 based on LPC:')
 
-    # print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='lpc'))
+    print(find_similar_speaker(REF_NAME, DB_PATH, feature_type='lpc'))

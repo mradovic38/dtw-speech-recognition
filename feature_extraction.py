@@ -2,7 +2,7 @@
 import librosa
 import numpy as np
 
-def extract_features(file_path, feature_type="mel"):
+def extract_features(file_path: str, feature_type:str="mel") -> np.ndarray:
     """
     Extract audio features from a file.
     
